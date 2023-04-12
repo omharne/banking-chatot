@@ -1,67 +1,75 @@
-from flask import Flask, request, jsonify, render_template
+import streamlit as st
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.svm import SVC
 import pandas as pd
 import numpy as np
+import fsspec 
+
+
 
 # Load the preprocessed data
-df_result = pd.read_csv('df_result_ofdf1plusdf2_index.csv')
+df=pd.read_csv("./BankFAQs.csv")
+df1=pd.read_csv("./BankFAQs1.csv",encoding='ISO-8859-1')
+
+data1=pd.concat([df1,df])
 
 # Define the TD-IDF vectorizer and fit it to the data
-tvec3 = TfidfVectorizer()
-tvec3.fit(df_result['Question'].str.lower())
+tdidf = TfidfVectorizer()
+tdidf.fit(data1['Question'].str.lower())
 
 # Define the support vector machine model and fit it to the data
-clf3 = SVC(kernel='linear')
-clf3.fit(tvec3.transform(df_result['Question'].str.lower()), df_result['Class'])
+svc_model = SVC(kernel='linear')
+svc_model.fit(tdidf.transform(data1['Question'].str.lower()), data1['Class'])
 
 # Define a function to get the answer to a given question
 def get_answer(question):
     # Vectorize the question
-    question_tdidf = tvec3.transform([question.lower()])
+    question_tdidf = tdidf.transform([question.lower()])
     
     # Calculate the cosine similarity between both vectors
-    cosine_sims = cosine_similarity(question_tdidf, tvec3.transform(df_result['Question'].str.lower()))
+    cosine_sims = cosine_similarity(question_tdidf, tdidf.transform(data1['Question'].str.lower()))
 
     # Get the index of the most similar text to the query
     most_similar_idx = np.argmax(cosine_sims)
 
     # Get the predicted class of the query
-    predicted_class = clf3.predict(question_tdidf)[0]
+    predicted_class = svc_model.predict(question_tdidf)[0]
     
     # If the predicted class is not the same as the actual class, return an error message
-    if predicted_class != df_result.iloc[most_similar_idx]['Class']:
-        return {'error': 'Could not find an appropriate answer.'}
+    if predicted_class != data1.iloc[most_similar_idx]['Class']:
+        return 'Could not find an appropriate answer.'
     
     # Get the answer and construct the response
-    answer = df_result.iloc[most_similar_idx]['Answer']
-    response = {
-        'answer': answer,
-        'predicted_class': predicted_class
-    }
+    answer = data1.iloc[most_similar_idx]['Answer']
+    response = f"Answer: {answer}"
     
     return response
-from flask import Flask, request, jsonify, render_template
 
-# Create a Flask app
-app = Flask(__name__,template_folder='template')
+# Create a streamlit app
+def app():
+    # Set the app title
+    st.set_page_config(page_title="Bank FAQ Chatbot", page_icon=":bank:")
 
-# Define the route for the chatbot web interface
-@app.route('/')
-def index():
-    return render_template('bank.html')
+    # Add a title and description to the app
+    st.title("Bank FAQ Chatbot")
+    st.markdown("This app uses a machine learning model to answer frequently asked questions about banking.")
 
-# Define the API route for predicting answers
-@app.route('/predict', methods=['POST'])
-def predict():
-    # Get the question from the request
-    question = request.form['question']
+    # Create a text input for the user to ask a question
+    question = st.text_input("Ask a question:")
 
-    # Get the answer to the question
-    response = get_answer(question)
-    
-    return jsonify(response)
+    # Add a button to submit the question
+    if st.button("Submit"):
+        # Check if the user has entered a question
+        if question == "":
+            st.warning("Please enter a question.")
+        else:
+            # Call the get_answer function to predict the answer to the question
+            answer = get_answer(question)
 
+            # Display the answer to the user
+            st.success(answer)
+
+# Run the streamlit app
 if __name__ == '__main__':
-    app.run(debug=True,use_reloader=False)
+    app()
